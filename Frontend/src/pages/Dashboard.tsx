@@ -1,18 +1,33 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Flame, Award, CheckCircle2, Circle, Calendar } from "lucide-react";
+import { Flame, Award, CheckCircle2, Calendar } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import FloatingChatWidget from "@/components/FloatingChatWidget";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { streaksAPI } from "@/services/api";
 
 const Dashboard = () => {
   const { currentStreak, longestStreak } = useAuth();
+  const queryClient = useQueryClient();
   const [weeklyCompletion, setWeeklyCompletion] = useState<boolean[]>([false, false, false, false, false, false, false]);
   
   const days = ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'];
+
+  // Update streak mutation
+  const updateStreakMutation = useMutation({
+    mutationFn: () => streaksAPI.update(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
+      toast.success("Routine completed! Keep up the great work!");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to update streak");
+    }
+  });
   
   const handleCompleteRoutine = () => {
     const today = new Date().getDay();
@@ -21,7 +36,7 @@ const Dashboard = () => {
     newWeekly[dayIndex] = true;
     setWeeklyCompletion(newWeekly);
     
-    toast.success("Routine completed! Keep up the great work!");
+    updateStreakMutation.mutate();
   };
   
   return (
@@ -93,9 +108,10 @@ const Dashboard = () => {
           <Button 
             onClick={handleCompleteRoutine}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-base font-semibold"
+            disabled={updateStreakMutation.isPending}
           >
             <CheckCircle2 className="w-5 h-5 mr-2" />
-            Complete Today's Routine
+            {updateStreakMutation.isPending ? "Updating..." : "Complete Today's Routine"}
           </Button>
         </Card>
       </div>

@@ -1,32 +1,66 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, RefreshCw } from "lucide-react";
 import RoutineStep from "@/components/RoutineStep";
 import Navigation from "@/components/Navigation";
 import FloatingChatButton from "@/components/FloatingChatButton";
+import TopNav from "@/components/TopNav";
 import { Card } from "@/components/ui/card";
+import { toast } from "sonner";
+import { routinesAPI } from "@/services/api";
 
 const Routines = () => {
-  const [morningCompleted, setMorningCompleted] = useState([false, false, false, false, false]);
-  const [nightCompleted, setNightCompleted] = useState([false, false, false, false, false, false]);
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("morning");
 
-  const morningRoutine = [
-    { product: "Gentle Foam Cleanser", brand: "CeraVe", instruction: "Apply to damp face, massage gently, rinse thoroughly" },
-    { product: "Hyaluronic Acid", brand: "The Ordinary", instruction: "Apply 2-3 drops to damp skin" },
-    { product: "Niacinamide Serum", brand: "The Ordinary", instruction: "Apply 4-5 drops, avoiding eye area" },
-    { product: "Eye Cream", brand: "CeraVe", instruction: "Pat gently around eye area" },
-    { product: "Daily Moisturizer SPF 30", brand: "CeraVe", instruction: "Apply generously as final step" },
-  ];
+  // Fetch routines from API
+  const { data: routinesData, isLoading } = useQuery({
+    queryKey: ['routines'],
+    queryFn: async () => {
+      const response = await routinesAPI.getAll();
+      return response.data?.routines || [];
+    }
+  });
 
-  const nightRoutine = [
-    { product: "Gentle Foam Cleanser", brand: "CeraVe", instruction: "Apply to damp face, massage gently, rinse thoroughly" },
-    { product: "Exfoliating Toner", brand: "The Ordinary", instruction: "Apply with cotton pad, avoid eye area" },
-    { product: "Hyaluronic Acid", brand: "The Ordinary", instruction: "Apply 2-3 drops to damp skin" },
-    { product: "Retinol 0.5%", brand: "The Ordinary", instruction: "Apply pea-sized amount (start 2-3x per week)" },
-    { product: "Eye Cream", brand: "CeraVe", instruction: "Pat gently around eye area" },
-    { product: "Night Moisturizer", brand: "CeraVe", instruction: "Apply generously as final step" },
-  ];
+  // Generate AI routine mutation
+  const generateMutation = useMutation({
+    mutationFn: (type: 'morning' | 'night') => routinesAPI.generateAI(type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routines'] });
+      toast.success("Routine regenerated successfully!");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to generate routine");
+    }
+  });
+
+  // Complete routine mutation
+  const completeMutation = useMutation({
+    mutationFn: (id: string) => routinesAPI.complete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routines'] });
+      toast.success("Routine completed! Great job! 🎉");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to complete routine");
+    }
+  });
+
+  const routines = routinesData || [];
+  const morningRoutine = routines.find((r: any) => r.type === 'morning');
+  const nightRoutine = routines.find((r: any) => r.type === 'night');
+
+  const [morningCompleted, setMorningCompleted] = useState<boolean[]>([]);
+  const [nightCompleted, setNightCompleted] = useState<boolean[]>([]);
+
+  const handleRegenerate = () => {
+    const type = activeTab as 'morning' | 'night';
+    if (window.confirm(`Regenerate your ${type} routine with AI?`)) {
+      generateMutation.mutate(type);
+    }
+  };
 
   const toggleMorningStep = (index: number) => {
     const newCompleted = [...morningCompleted];
@@ -41,7 +75,8 @@ const Routines = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle pb-20">
+    <div className="min-h-screen bg-gradient-subtle pb-20 pt-16">
+      <TopNav />
       <div className="max-w-screen-lg mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-6">
@@ -50,11 +85,14 @@ const Routines = () => {
         </div>
 
         {/* Compatibility Notice */}
-        <Card className="p-4 mb-6 bg-warning/10 border-warning">
-          <p className="text-sm text-foreground">
-            <span className="font-semibold">Notice:</span> Retinol and Niacinamide may cause irritation when used together. Consider using them at different times.
-          </p>
-        </Card>
+        {(morningRoutine?.compatibilityWarnings?.length > 0 || nightRoutine?.compatibilityWarnings?.length > 0) && (
+          <Card className="p-4 mb-6 bg-warning/10 border-warning">
+            <p className="text-sm text-foreground">
+              <span className="font-semibold">Notice:</span>{' '}
+              {morningRoutine?.compatibilityWarnings?.[0] || nightRoutine?.compatibilityWarnings?.[0]}
+            </p>
+          </Card>
+        )}
 
         {/* Regenerate Banner */}
         <Card className="p-4 mb-6 bg-gradient-primary border-0 flex items-center justify-between">
@@ -64,13 +102,19 @@ const Routines = () => {
               Products updated? Regenerate your routines with AI
             </p>
           </div>
-          <Button size="sm" variant="secondary" className="bg-white/20 text-primary-foreground border-0 hover:bg-white/30">
-            Regenerate
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-white/20 text-primary-foreground border-0 hover:bg-white/30"
+            onClick={handleRegenerate}
+            disabled={generateMutation.isPending}
+          >
+            {generateMutation.isPending ? "Generating..." : "Regenerate"}
           </Button>
         </Card>
 
         {/* Tabs */}
-        <Tabs defaultValue="morning" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="morning" className="flex items-center gap-2">
               <Sun className="w-4 h-4" />
@@ -83,31 +127,65 @@ const Routines = () => {
           </TabsList>
 
           <TabsContent value="morning" className="space-y-4">
-            {morningRoutine.map((step, index) => (
-              <RoutineStep
-                key={index}
-                stepNumber={index + 1}
-                product={step.product}
-                brand={step.brand}
-                instruction={step.instruction}
-                completed={morningCompleted[index]}
-                onToggle={() => toggleMorningStep(index)}
-              />
-            ))}
+            {isLoading ? (
+              <div className="text-center py-12">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading routine...</p>
+              </div>
+            ) : !morningRoutine ? (
+              <Card className="p-12 text-center">
+                <p className="text-muted-foreground mb-4">No morning routine yet</p>
+                <Button 
+                  onClick={() => generateMutation.mutate('morning')}
+                  disabled={generateMutation.isPending}
+                >
+                  {generateMutation.isPending ? "Generating..." : "Generate Morning Routine"}
+                </Button>
+              </Card>
+            ) : (
+              morningRoutine.steps.map((step: any, index: number) => (
+                <RoutineStep
+                  key={index}
+                  stepNumber={step.stepNumber}
+                  product={typeof step.product === 'object' ? step.product.name : step.product}
+                  brand={typeof step.product === 'object' ? step.product.brand : ''}
+                  instruction={step.instruction}
+                  completed={morningCompleted[index]}
+                  onToggle={() => toggleMorningStep(index)}
+                />
+              ))
+            )}
           </TabsContent>
 
           <TabsContent value="night" className="space-y-4">
-            {nightRoutine.map((step, index) => (
-              <RoutineStep
-                key={index}
-                stepNumber={index + 1}
-                product={step.product}
-                brand={step.brand}
-                instruction={step.instruction}
-                completed={nightCompleted[index]}
-                onToggle={() => toggleNightStep(index)}
-              />
-            ))}
+            {isLoading ? (
+              <div className="text-center py-12">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading routine...</p>
+              </div>
+            ) : !nightRoutine ? (
+              <Card className="p-12 text-center">
+                <p className="text-muted-foreground mb-4">No night routine yet</p>
+                <Button 
+                  onClick={() => generateMutation.mutate('night')}
+                  disabled={generateMutation.isPending}
+                >
+                  {generateMutation.isPending ? "Generating..." : "Generate Night Routine"}
+                </Button>
+              </Card>
+            ) : (
+              nightRoutine.steps.map((step: any, index: number) => (
+                <RoutineStep
+                  key={index}
+                  stepNumber={step.stepNumber}
+                  product={typeof step.product === 'object' ? step.product.name : step.product}
+                  brand={typeof step.product === 'object' ? step.product.brand : ''}
+                  instruction={step.instruction}
+                  completed={nightCompleted[index]}
+                  onToggle={() => toggleNightStep(index)}
+                />
+              ))
+            )}
           </TabsContent>
         </Tabs>
       </div>

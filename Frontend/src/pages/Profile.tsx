@@ -7,10 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
-  const userName = localStorage.getItem("userName") || "User";
-  const userEmail = localStorage.getItem("userEmail") || "";
 
   const handleLogout = () => {
     logout();
@@ -34,10 +32,10 @@ const Profile = () => {
               <User className="w-10 h-10 text-primary-foreground" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-foreground">{userName}</h2>
+              <h2 className="text-2xl font-bold text-foreground">{user?.name || "User"}</h2>
               <p className="text-muted-foreground flex items-center gap-2">
                 <Mail className="w-4 h-4" />
-                {userEmail}
+                {user?.email || ""}
               </p>
             </div>
           </div>

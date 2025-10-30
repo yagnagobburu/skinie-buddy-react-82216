@@ -13,28 +13,35 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { login, signup } = useAuth();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
-    toast({
-      title: "Login Successful",
-      description: "Welcome back to Skinie Homie!",
-    });
-    navigate("/");
+    setIsLoading(true);
+    try {
+      await login(email, password);
+      navigate("/");
+    } catch (error) {
+      // Error already shown by AuthContext
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    signup(name, email, password);
-    toast({
-      title: "Account Created",
-      description: "Welcome to Skinie Homie!",
-    });
-    navigate("/");
+    setIsLoading(true);
+    try {
+      await signup(name, email, password);
+      navigate("/");
+    } catch (error) {
+      // Error already shown by AuthContext
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -81,8 +88,8 @@ const Auth = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  Login
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? "Logging in..." : "Login"}
                 </Button>
               </form>
             </TabsContent>
@@ -122,8 +129,8 @@ const Auth = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  Create Account
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? "Creating Account..." : "Create Account"}
                 </Button>
               </form>
             </TabsContent>

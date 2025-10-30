@@ -1,11 +1,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { authAPI, streaksAPI } from "@/services/api";
+import { toast } from "sonner";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   currentStreak: number;
   longestStreak: number;
-  login: (email: string, password: string) => void;
-  signup: (name: string, email: string, password: string) => void;
+  user: any;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -15,84 +19,114 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const calculateStreak = () => {
-    const lastLogin = localStorage.getItem("lastLoginDate");
-    const storedCurrentStreak = parseInt(localStorage.getItem("currentStreak") || "0");
-    const storedLongestStreak = parseInt(localStorage.getItem("longestStreak") || "0");
-    
-    const today = new Date().toDateString();
-    
-    if (!lastLogin) {
-      // First login
-      localStorage.setItem("currentStreak", "1");
-      localStorage.setItem("longestStreak", "1");
-      setCurrentStreak(1);
-      setLongestStreak(1);
-    } else if (lastLogin === today) {
-      // Already logged in today
-      setCurrentStreak(storedCurrentStreak);
-      setLongestStreak(storedLongestStreak);
-    } else {
-      const lastDate = new Date(lastLogin);
-      const todayDate = new Date(today);
-      const diffTime = todayDate.getTime() - lastDate.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 1) {
-        // Consecutive day
-        const newStreak = storedCurrentStreak + 1;
-        const newLongest = Math.max(newStreak, storedLongestStreak);
-        localStorage.setItem("currentStreak", newStreak.toString());
-        localStorage.setItem("longestStreak", newLongest.toString());
-        setCurrentStreak(newStreak);
-        setLongestStreak(newLongest);
-      } else {
-        // Streak broken
-        localStorage.setItem("currentStreak", "1");
-        setCurrentStreak(1);
-        setLongestStreak(storedLongestStreak);
-      }
-    }
-    
-    localStorage.setItem("lastLoginDate", today);
-  };
-
+  // Check authentication on mount
   useEffect(() => {
-    const authStatus = localStorage.getItem("isAuthenticated");
-    if (authStatus === "true") {
-      setIsAuthenticated(true);
-      const storedCurrentStreak = parseInt(localStorage.getItem("currentStreak") || "0");
-      const storedLongestStreak = parseInt(localStorage.getItem("longestStreak") || "0");
-      setCurrentStreak(storedCurrentStreak);
-      setLongestStreak(storedLongestStreak);
-    }
+    const checkAuth = async () => {
+      const token = localStorage.getItem("authToken");
+      const authStatus = localStorage.getItem("isAuthenticated");
+      
+      if (token && authStatus === "true") {
+        try {
+          // Verify token and get user data from backend
+          const response = await authAPI.getMe();
+          if (response.success && response.data) {
+            setIsAuthenticated(true);
+            setUser(response.data.user);
+            if (response.data.streak) {
+              setCurrentStreak(response.data.streak.currentStreak || 0);
+              setLongestStreak(response.data.streak.longestStreak || 0);
+            }
+          }
+        } catch (error) {
+          // Token invalid, clear auth
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("isAuthenticated");
+          setIsAuthenticated(false);
+        }
+      }
+      setLoading(false);
+    };
+
+    checkAuth();
   }, []);
 
-  const login = (email: string, password: string) => {
-    localStorage.setItem("isAuthenticated", "true");
-    localStorage.setItem("userEmail", email);
-    setIsAuthenticated(true);
-    calculateStreak();
+  const login = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      const response = await authAPI.login(email, password);
+      
+      if (response.success && response.data) {
+        // Store token
+        localStorage.setItem("authToken", response.data.token);
+        localStorage.setItem("isAuthenticated", "true");
+        
+        // Update state
+        setIsAuthenticated(true);
+        setUser(response.data.user);
+        
+        // Update streak
+        if (response.data.streak) {
+          setCurrentStreak(response.data.streak.currentStreak || 0);
+          setLongestStreak(response.data.streak.longestStreak || 0);
+        }
+        
+        toast.success("Login successful!");
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Login failed. Please try again.";
+      toast.error(message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const signup = (name: string, email: string, password: string) => {
-    localStorage.setItem("isAuthenticated", "true");
-    localStorage.setItem("userName", name);
-    localStorage.setItem("userEmail", email);
-    setIsAuthenticated(true);
-    calculateStreak();
+  const signup = async (name: string, email: string, password: string) => {
+    try {
+      setLoading(true);
+      const response = await authAPI.register(name, email, password);
+      
+      if (response.success && response.data) {
+        // Store token
+        localStorage.setItem("authToken", response.data.token);
+        localStorage.setItem("isAuthenticated", "true");
+        
+        // Update state
+        setIsAuthenticated(true);
+        setUser(response.data.user);
+        
+        // Update streak
+        if (response.data.streak) {
+          setCurrentStreak(response.data.streak.currentStreak || 0);
+          setLongestStreak(response.data.streak.longestStreak || 0);
+        }
+        
+        toast.success("Account created successfully!");
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Registration failed. Please try again.";
+      toast.error(message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = () => {
+    localStorage.removeItem("authToken");
     localStorage.removeItem("isAuthenticated");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("userEmail");
     setIsAuthenticated(false);
+    setUser(null);
+    setCurrentStreak(0);
+    setLongestStreak(0);
+    toast.success("Logged out successfully");
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, currentStreak, longestStreak, login, signup, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, currentStreak, longestStreak, user, loading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
