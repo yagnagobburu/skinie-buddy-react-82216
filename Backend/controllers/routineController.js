@@ -1,5 +1,7 @@
 import Routine from '../models/Routine.js';
 import Product from '../models/Product.js';
+import User from '../models/User.js';
+import { generateSkincareRoutine } from '../services/geminiService.js';
 
 // @desc    Get all routines for user
 // @route   GET /api/routines
@@ -206,12 +208,19 @@ export const completeRoutine = async (req, res, next) => {
   }
 };
 
-// @desc    Generate AI routine based on products
+// @desc    Generate AI routine based on products using Gemini AI
 // @route   POST /api/routines/generate
 // @access  Private
 export const generateRoutine = async (req, res, next) => {
   try {
     const { type } = req.body; // 'morning' or 'night'
+
+    if (!type || !['morning', 'night'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please specify routine type: morning or night'
+      });
+    }
 
     // Get user's products
     const products = await Product.find({
@@ -226,7 +235,83 @@ export const generateRoutine = async (req, res, next) => {
       });
     }
 
-    // Simple AI logic for generating routine
+    // Get user profile for personalization
+    const user = await User.findById(req.user._id);
+
+    // Check if existing routine exists and delete it
+    await Routine.deleteMany({
+      user: req.user._id,
+      type: type,
+      isAIGenerated: true
+    });
+
+    try {
+      // Generate routine using Gemini AI
+      const aiRoutineData = await generateSkincareRoutine({
+        products: products,
+        type: type,
+        skinType: user.skinType,
+        skinConcerns: user.skinConcerns
+      });
+
+      // Map AI-generated steps to actual products
+      const steps = [];
+      for (const aiStep of aiRoutineData.steps) {
+        // Find matching product by name (case-insensitive)
+        const matchingProduct = products.find(p => 
+          p.name.toLowerCase() === aiStep.productName.toLowerCase() ||
+          aiStep.productName.toLowerCase().includes(p.name.toLowerCase()) ||
+          p.name.toLowerCase().includes(aiStep.productName.toLowerCase())
+        );
+
+        if (matchingProduct) {
+          steps.push({
+            stepNumber: aiStep.stepNumber,
+            product: matchingProduct._id,
+            instruction: aiStep.instruction,
+            waitTime: aiStep.waitTime || 0
+          });
+        }
+      }
+
+      if (steps.length === 0) {
+        // Fallback to simple logic if no products matched
+        return await generateRoutineFallback(req, res, next, products, type);
+      }
+
+      // Create routine with AI data
+      const routine = await Routine.create({
+        user: req.user._id,
+        name: `AI Generated ${type.charAt(0).toUpperCase() + type.slice(1)} Routine`,
+        type,
+        steps,
+        isAIGenerated: true,
+        compatibilityWarnings: aiRoutineData.compatibilityWarnings || []
+      });
+
+      const populatedRoutine = await Routine.findById(routine._id).populate('steps.product');
+
+      res.status(201).json({
+        success: true,
+        message: 'AI routine generated successfully',
+        data: { 
+          routine: populatedRoutine,
+          aiTips: aiRoutineData.tips || []
+        }
+      });
+    } catch (aiError) {
+      // If Gemini API fails, fallback to rule-based generation
+      console.error('Gemini AI generation failed, using fallback:', aiError.message);
+      return await generateRoutineFallback(req, res, next, products, type);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Fallback routine generation (rule-based)
+const generateRoutineFallback = async (req, res, next, products, type) => {
+  try {
     const routineOrder = {
       morning: ['Cleanser', 'Toner', 'Serum', 'Eye Cream', 'Moisturizer', 'Sunscreen'],
       night: ['Cleanser', 'Exfoliant', 'Toner', 'Serum', 'Treatment', 'Eye Cream', 'Moisturizer', 'Oil']
@@ -243,7 +328,7 @@ export const generateRoutine = async (req, res, next) => {
         steps.push({
           stepNumber: stepNumber++,
           product: product._id,
-          instruction: `Apply ${product.name} gently`,
+          instruction: `Apply ${product.name} gently to clean skin`,
           waitTime: productType === 'Serum' || productType === 'Treatment' ? 2 : 0
         });
       }
@@ -266,13 +351,13 @@ export const generateRoutine = async (req, res, next) => {
     );
 
     if (hasRetinol && hasVitaminC && type === 'morning') {
-      compatibilityWarnings.push('Retinol and Vitamin C may cause irritation when used together in the morning.');
+      compatibilityWarnings.push('⚠️ Retinol and Vitamin C may cause irritation when used together in the morning.');
     }
 
     // Create routine
     const routine = await Routine.create({
       user: req.user._id,
-      name: `AI Generated ${type.charAt(0).toUpperCase() + type.slice(1)} Routine`,
+      name: `Generated ${type.charAt(0).toUpperCase() + type.slice(1)} Routine`,
       type,
       steps,
       isAIGenerated: true,
@@ -283,10 +368,10 @@ export const generateRoutine = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: 'Routine generated successfully',
+      message: 'Routine generated successfully (using fallback logic)',
       data: { routine: populatedRoutine }
     });
   } catch (error) {
-    next(error);
+    throw error;
   }
 };

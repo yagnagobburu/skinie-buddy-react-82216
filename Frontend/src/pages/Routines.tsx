@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ const Routines = () => {
     mutationFn: (id: string) => routinesAPI.complete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routines'] });
+      queryClient.invalidateQueries({ queryKey: ['auth'] }); // Update streak
       toast.success("Routine completed! Great job! 🎉");
     },
     onError: (error: any) => {
@@ -54,6 +55,41 @@ const Routines = () => {
 
   const [morningCompleted, setMorningCompleted] = useState<boolean[]>([]);
   const [nightCompleted, setNightCompleted] = useState<boolean[]>([]);
+
+  // Initialize completion arrays when routines load
+  useEffect(() => {
+    if (morningRoutine) {
+      setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+    }
+  }, [morningRoutine]);
+
+  useEffect(() => {
+    if (nightRoutine) {
+      setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+    }
+  }, [nightRoutine]);
+
+  // Check if all morning steps completed and trigger API
+  useEffect(() => {
+    if (morningCompleted.length > 0 && morningCompleted.every(c => c) && morningRoutine) {
+      completeMutation.mutate(morningRoutine._id);
+      // Reset after completion
+      setTimeout(() => {
+        setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+      }, 1000);
+    }
+  }, [morningCompleted]);
+
+  // Check if all night steps completed and trigger API
+  useEffect(() => {
+    if (nightCompleted.length > 0 && nightCompleted.every(c => c) && nightRoutine) {
+      completeMutation.mutate(nightRoutine._id);
+      // Reset after completion
+      setTimeout(() => {
+        setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+      }, 1000);
+    }
+  }, [nightCompleted]);
 
   const handleRegenerate = () => {
     const type = activeTab as 'morning' | 'night';

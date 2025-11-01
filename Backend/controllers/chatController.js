@@ -1,6 +1,8 @@
 import ChatMessage from '../models/ChatMessage.js';
 import Product from '../models/Product.js';
 import Routine from '../models/Routine.js';
+import User from '../models/User.js';
+import { getGeminiResponse } from '../services/geminiService.js';
 
 // @desc    Get chat history
 // @route   GET /api/chat/history
@@ -35,19 +37,44 @@ export const sendMessage = async (req, res, next) => {
   try {
     const { content } = req.body;
 
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message content is required'
+      });
+    }
+
     // Save user message
     const userMessage = await ChatMessage.create({
       user: req.user._id,
       role: 'user',
-      content
+      content: content.trim()
     });
 
-    // Get user context (products and routines)
+    // Get user context (products, routines, and profile)
+    const user = await User.findById(req.user._id);
     const products = await Product.find({ user: req.user._id, isActive: true });
-    const routines = await Routine.find({ user: req.user._id, isActive: true });
+    const routines = await Routine.find({ user: req.user._id, isActive: true })
+      .populate('steps.product');
 
-    // Simple AI response logic (in production, integrate with OpenAI/Claude)
-    const aiResponse = generateAIResponse(content, products, routines);
+    let aiResponse;
+    let useAI = true;
+    const startTime = Date.now();
+
+    try {
+      // Build context-aware prompt for Gemini
+      const prompt = buildChatPrompt(content, user, products, routines);
+      
+      // Get AI response from Gemini
+      aiResponse = await getGeminiResponse(prompt);
+    } catch (aiError) {
+      console.error('Gemini AI failed, using fallback:', aiError.message);
+      // Fallback to rule-based response
+      aiResponse = generateAIResponse(content, products, routines);
+      useAI = false;
+    }
+
+    const responseTime = Date.now() - startTime;
 
     // Save AI message
     const assistantMessage = await ChatMessage.create({
@@ -59,8 +86,8 @@ export const sendMessage = async (req, res, next) => {
         routines: routines.slice(0, 3).map(r => r._id)
       },
       metadata: {
-        model: 'simple-logic',
-        responseTime: 100
+        model: useAI ? 'gemini-pro' : 'fallback-logic',
+        responseTime
       }
     });
 
@@ -78,6 +105,53 @@ export const sendMessage = async (req, res, next) => {
     next(error);
   }
 };
+
+// Build context-aware prompt for Gemini
+function buildChatPrompt(userMessage, user, products, routines) {
+  let prompt = `You are an expert skincare advisor. Provide personalized, helpful advice based on the user's question and their skincare profile.
+
+**User Profile:**
+- Skin Type: ${user.skinType || 'Not specified'}
+- Skin Concerns: ${user.skinConcerns?.join(', ') || 'Not specified'}
+
+`;
+
+  // Add products context if available
+  if (products.length > 0) {
+    prompt += `**User's Products (${products.length} total):**\n`;
+    products.slice(0, 10).forEach(p => {
+      const ingredients = p.keyIngredients?.map(i => i.name).join(', ') || 'Not specified';
+      prompt += `- ${p.name} by ${p.brand} (${p.type}) - Key Ingredients: ${ingredients}\n`;
+    });
+    prompt += '\n';
+  }
+
+  // Add routines context if available
+  if (routines.length > 0) {
+    prompt += `**User's Current Routines:**\n`;
+    routines.forEach(r => {
+      prompt += `- ${r.name} (${r.type}): ${r.steps.length} steps\n`;
+    });
+    prompt += '\n';
+  }
+
+  prompt += `**User's Question:**
+${userMessage}
+
+**Instructions:**
+1. Provide a clear, concise answer (2-4 paragraphs)
+2. Reference their specific products when relevant
+3. Give actionable advice
+4. If discussing product order, explain the reasoning
+5. Warn about ingredient conflicts if applicable
+6. Be encouraging and supportive
+7. Keep the tone friendly but professional
+8. If you don't have enough information, ask clarifying questions
+
+Respond in a conversational, helpful tone:`;
+
+  return prompt;
+}
 
 // @desc    Clear chat history
 // @route   DELETE /api/chat/history

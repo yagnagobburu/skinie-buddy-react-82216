@@ -26,7 +26,7 @@ export const register = async (req, res, next) => {
     });
 
     // Create initial streak record
-    await Streak.create({
+    const streak = await Streak.create({
       user: user._id,
       currentStreak: 1,
       longestStreak: 1,
@@ -50,6 +50,10 @@ export const register = async (req, res, next) => {
           skinType: user.skinType,
           skinConcerns: user.skinConcerns
         },
+        streak: {
+          currentStreak: streak.currentStreak,
+          longestStreak: streak.longestStreak
+        },
         token
       }
     });
@@ -65,24 +69,32 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
+    console.log('Login attempt for email:', email);
+
     // Find user and include password
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
+      console.log('User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
+    console.log('User found, comparing password...');
+
     // Check password
     const isPasswordMatch = await user.comparePassword(password);
     if (!isPasswordMatch) {
+      console.log('Password mismatch for user:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
+
+    console.log('Password match successful for:', email);
 
     // Update streak
     let streak = await Streak.findOne({ user: user._id });

@@ -1,6 +1,6 @@
 # Skinie Buddy Backend API
 
-Backend API for Skinie Buddy - Your personalized skincare companion.
+Backend API for Skinie Buddy - Your personalized skincare companion with AI-powered recommendations.
 
 ## Tech Stack
 
@@ -10,6 +10,7 @@ Backend API for Skinie Buddy - Your personalized skincare companion.
 - **Mongoose** - ODM
 - **JWT** - Authentication
 - **bcryptjs** - Password hashing
+- **Google Gemini AI** - AI-powered skincare advice 🤖
 
 ## Features
 
@@ -17,11 +18,22 @@ Backend API for Skinie Buddy - Your personalized skincare companion.
 - 👤 User profile management
 - 📦 Product management (CRUD)
 - 📋 Skincare routine management
+- 🤖 **AI-powered routine generation (Gemini)**
+- 💬 **AI chat assistant (Gemini)**
 - 🔥 Streak tracking system
-- 💬 AI chat assistant
 - 🛡️ Security (Helmet, CORS, Rate limiting)
 - ✅ Input validation
 - 🚨 Error handling
+
+## New: AI Integration 🎯
+
+This backend now integrates with **Google Gemini AI** to provide:
+- ✨ Personalized routine generation based on user's products and skin profile
+- 💡 Intelligent chat responses for skincare questions
+- 🔍 Ingredient compatibility analysis
+- 📊 Context-aware recommendations
+
+**Setup Guide:** See [GEMINI_AI_SETUP.md](./GEMINI_AI_SETUP.md) for complete AI setup instructions.
 
 ## Installation
 
