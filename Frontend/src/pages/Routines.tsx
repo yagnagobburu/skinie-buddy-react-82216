@@ -56,18 +56,83 @@ const Routines = () => {
   const [morningCompleted, setMorningCompleted] = useState<boolean[]>([]);
   const [nightCompleted, setNightCompleted] = useState<boolean[]>([]);
 
+  // Load completion state from localStorage
+  useEffect(() => {
+    const savedMorning = localStorage.getItem('morningRoutineCompleted');
+    const savedNight = localStorage.getItem('nightRoutineCompleted');
+    
+    if (savedMorning) {
+      try {
+        setMorningCompleted(JSON.parse(savedMorning));
+      } catch (e) {
+        console.error('Error loading morning completion state:', e);
+      }
+    }
+    
+    if (savedNight) {
+      try {
+        setNightCompleted(JSON.parse(savedNight));
+      } catch (e) {
+        console.error('Error loading night completion state:', e);
+      }
+    }
+  }, []);
+
   // Initialize completion arrays when routines load
   useEffect(() => {
     if (morningRoutine) {
-      setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+      const saved = localStorage.getItem('morningRoutineCompleted');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          // Only use saved state if length matches
+          if (parsed.length === morningRoutine.steps.length) {
+            setMorningCompleted(parsed);
+          } else {
+            setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+          }
+        } catch (e) {
+          setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+        }
+      } else {
+        setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+      }
     }
   }, [morningRoutine]);
 
   useEffect(() => {
     if (nightRoutine) {
-      setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+      const saved = localStorage.getItem('nightRoutineCompleted');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          // Only use saved state if length matches
+          if (parsed.length === nightRoutine.steps.length) {
+            setNightCompleted(parsed);
+          } else {
+            setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+          }
+        } catch (e) {
+          setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+        }
+      } else {
+        setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+      }
     }
   }, [nightRoutine]);
+
+  // Save to localStorage whenever completion state changes
+  useEffect(() => {
+    if (morningCompleted.length > 0) {
+      localStorage.setItem('morningRoutineCompleted', JSON.stringify(morningCompleted));
+    }
+  }, [morningCompleted]);
+
+  useEffect(() => {
+    if (nightCompleted.length > 0) {
+      localStorage.setItem('nightRoutineCompleted', JSON.stringify(nightCompleted));
+    }
+  }, [nightCompleted]);
 
   // Check if all morning steps completed and trigger API
   useEffect(() => {
@@ -75,7 +140,9 @@ const Routines = () => {
       completeMutation.mutate(morningRoutine._id);
       // Reset after completion
       setTimeout(() => {
-        setMorningCompleted(new Array(morningRoutine.steps.length).fill(false));
+        const resetState = new Array(morningRoutine.steps.length).fill(false);
+        setMorningCompleted(resetState);
+        localStorage.setItem('morningRoutineCompleted', JSON.stringify(resetState));
       }, 1000);
     }
   }, [morningCompleted]);
@@ -86,7 +153,9 @@ const Routines = () => {
       completeMutation.mutate(nightRoutine._id);
       // Reset after completion
       setTimeout(() => {
-        setNightCompleted(new Array(nightRoutine.steps.length).fill(false));
+        const resetState = new Array(nightRoutine.steps.length).fill(false);
+        setNightCompleted(resetState);
+        localStorage.setItem('nightRoutineCompleted', JSON.stringify(resetState));
       }, 1000);
     }
   }, [nightCompleted]);

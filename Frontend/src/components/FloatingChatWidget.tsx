@@ -1,4 +1,4 @@
-import { MessageSquare, X, Send, Sparkles } from "lucide-react";
+import { MessageSquare, X, Send, Sparkles, Trash2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,17 @@ import { Input } from "@/components/ui/input";
 import { chatAPI } from "@/services/api";
 import { toast } from "sonner";
 import ChatMessage from "./ChatMessage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Message {
   _id?: string;
@@ -45,6 +56,19 @@ const FloatingChatWidget = () => {
     }
   });
 
+  // Clear chat history mutation
+  const clearMutation = useMutation({
+    mutationFn: () => chatAPI.clearHistory(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat-history-widget'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-history'] });
+      toast.success("Chat history cleared!");
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Failed to clear chat");
+    }
+  });
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,14 +98,46 @@ const FloatingChatWidget = () => {
               <Sparkles className="h-5 w-5 text-primary-foreground" />
               <h3 className="font-semibold text-primary-foreground">AI Assistant</h3>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIsOpen(false)}
-              className="h-8 w-8 text-primary-foreground hover:bg-white/20"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {messages.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-primary-foreground hover:bg-white/20"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear Chat?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will delete all messages. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction 
+                        onClick={() => clearMutation.mutate()}
+                        className="bg-destructive hover:bg-destructive/90"
+                      >
+                        Clear
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setIsOpen(false)}
+                className="h-8 w-8 text-primary-foreground hover:bg-white/20"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="flex-1 p-3 overflow-y-auto space-y-2">
             {messages.length === 0 ? (
